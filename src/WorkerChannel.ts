@@ -147,6 +147,7 @@ export class WorkerChannel implements IWorkerChannel {
       };
       this._functionLoader.load(guid, metadata);
 
+      functionsMetadata.push()
     });
 /*
     string id = 11;
