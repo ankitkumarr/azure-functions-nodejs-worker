@@ -33,6 +33,10 @@ export class FunctionLoader implements IFunctionLoader {
       };
     }
 
+    isFunctionLoaded(functionId: string): boolean {
+        return functionId in this._loadedFunctions;
+    }
+
     getInfo(functionId: string): FunctionInfo {
       let loadedFunction = this._loadedFunctions[functionId];
       if (loadedFunction && loadedFunction.info) {

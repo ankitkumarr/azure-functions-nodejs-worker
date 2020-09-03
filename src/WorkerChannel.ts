@@ -103,6 +103,15 @@ export class WorkerChannel implements IWorkerChannel {
     });
   }
 
+  public functionsIndexRequest(requestId: string, msg: rpc.FunctionIndexRequest) {
+    let functionDir = msg.functionsDirectory
+
+    // TODO: Load the exported "app" property dynamically from "functionDir/app.js" or "functionDir/dist/app.js"
+    // Then similar to what we did in python, construct the actual metadata and the adapter to send to 
+    // `this._functionLoader.load`
+
+  }
+
   /**
    * Worker responds after loading required metadata to load function with the load result
    * @param requestId gRPC message request id
