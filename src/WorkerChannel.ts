@@ -9,6 +9,8 @@ import { systemError } from './utils/Logger';
 import { InternalException } from './utils/InternalException';
 import LogCategory = rpc.RpcLog.RpcLogCategory;
 import LogLevel = rpc.RpcLog.Level;
+import { FunctionDeclaration } from "create-function-app"
+
 
 /**
  * The worker channel should have a way to handle all incoming gRPC messages.
@@ -24,6 +26,7 @@ interface IWorkerChannel {
   functionLoadRequest(requestId: string, msg: rpc.FunctionLoadRequest): void;
   invocationRequest(requestId: string, msg: rpc.InvocationRequest): void;
   invocationCancel(requestId: string, msg: rpc.InvocationCancel): void;
+  functionsIndexRequest(requestId: string, msg: rpc.FunctionIndexRequest): void;
   functionEnvironmentReloadRequest(requestId: string, msg: rpc.IFunctionEnvironmentReloadRequest): void;
 }
 
@@ -109,7 +112,60 @@ export class WorkerChannel implements IWorkerChannel {
     // TODO: Load the exported "app" property dynamically from "functionDir/app.js" or "functionDir/dist/app.js"
     // Then similar to what we did in python, construct the actual metadata and the adapter to send to 
     // `this._functionLoader.load`
+    let fileName = functionDir + "\\app.js";
+    let script = require(functionDir + "\\app.js");
 
+  //   {
+  //     helloWorld: {
+  //         trigger: new HttpTrigger({
+  //             name: "req",
+  //             route: "/order",
+  //             methods: ["post"],
+  //             authLevel: "anonymous"
+  //         }),
+  //         handler: myFunction,
+  //         outputBindings: [
+  //             new HttpResponse({ bindingName: "res" })
+  //         ],
+  //     }
+  // }
+
+    let functions: FunctionDeclaration[] = script["functions"];
+    let functionsMetadata = [];
+
+    functions.forEach(element => {
+      let u = Date.now().toString(16) + Math.random().toString(16) + '0'.repeat(16);
+      let guid = [u.substr(0,8), u.substr(8,4), '4000-8' + u.substr(13,3), u.substr(16,12)].join('-');
+      let metadata: rpc.RpcFunctionMetadata = {
+        entryPoint : element.handler,
+        scriptFile : fileName,
+        isProxy : false,
+        // all the rest of the stuff that needs to be in the metadata
+        // bindings
+        // directory
+        // name
+      };
+      this._functionLoader.load(guid, metadata);
+
+    });
+/*
+    string id = 11;
+    string name = 1;
+    string script_file = 2;
+    string function_directory = 3;
+    string entry_point = 4;
+    string language = 5;
+    repeated RpcFullBindingMetadata binding_metadata = 6;
+    */
+
+    this._eventStream.write(
+      {
+        requestId: requestId,
+        FunctionsIndexResponse:{
+          functions_metadata : functionsMetadata
+        } 
+      }
+    )
   }
 
   /**
