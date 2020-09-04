@@ -5,6 +5,7 @@
   "description": "Microsoft Azure Functions NodeJS Worker",
   "license": "(MIT OR Apache-2.0)",
   "dependencies": {
+    "@azure/functions": "^1.2.2",
     "create-function-app": "0.0.7",
     "google-protobuf": "^3.11.4",
     "grpc": "^1.24.2",
@@ -38,7 +39,7 @@
   },
   "scripts": {
     "clean": "rimraf dist && rimraf azure-functions-language-worker-protobuf/src/rpc*",
-    "build": "rimraf dist && npm run gen && shx mkdir -p dist/azure-functions-language-worker-protobuf/src && shx cp azure-functions-language-worker-protobuf/src/rpc.* dist/azure-functions-language-worker-protobuf/src/. && tsc",
+    "build": "rimraf dist && npm run gen && shx mkdir -p dist/azure-functions-language-worker-protobuf/src && shx cp azure-functions-language-worker-protobuf/src/rpc.* dist/azure-functions-language-worker-protobuf/src/. && tsc --skipLibCheck",
     "build-nomaps": "npm run build -- --sourceMap false",
     "gen": "node scripts/generateProtos.js",
     "test": "mocha -r ts-node/register ./test/**/*.ts"

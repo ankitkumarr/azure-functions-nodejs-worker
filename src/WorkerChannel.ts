@@ -27,7 +27,7 @@ interface IWorkerChannel {
   functionLoadRequest(requestId: string, msg: rpc.FunctionLoadRequest): void;
   invocationRequest(requestId: string, msg: rpc.InvocationRequest): void;
   invocationCancel(requestId: string, msg: rpc.InvocationCancel): void;
-  functionsIndexRequest(requestId: string, msg: rpc.FunctionIndexRequest): void;
+  functionsIndexRequest(requestId: string, msg: rpc.FunctionsIndexRequest): void;
   functionEnvironmentReloadRequest(requestId: string, msg: rpc.IFunctionEnvironmentReloadRequest): void;
 }
 
@@ -107,7 +107,7 @@ export class WorkerChannel implements IWorkerChannel {
     });
   }
 
-  public functionsIndexRequest(requestId: string, msg: rpc.FunctionIndexRequest) {
+  public functionsIndexRequest(requestId: string, msg: rpc.FunctionsIndexRequest) {
     let functionDir = msg.functionsDirectory
 
     // TODO: Load the exported "app" property dynamically from "functionDir/app.js" or "functionDir/dist/app.js"
@@ -116,23 +116,8 @@ export class WorkerChannel implements IWorkerChannel {
     let fileName = functionDir + "\\dist\\app.js";
     let script = require(functionDir + "\\dist\\app.js");
 
-  //   {
-  //     helloWorld: {
-  //         trigger: new HttpTrigger({
-  //             name: "req",
-  //             route: "/order",
-  //             methods: ["post"],
-  //             authLevel: "anonymous"
-  //         }),
-  //         handler: myFunction,
-  //         outputBindings: [
-  //             new HttpResponse({ bindingName: "res" })
-  //         ],
-  //     }
-  // }
-
     let functions: FunctionDeclaration = script["functions"];
-    let functionsMetadata: rpc.RpcFullFunctionMetadata[] = [];
+    let functionsMetadata: rpc.IRpcFullFunctionMetadata[] = [];
 
     for (let functionName in functions) {
       let element = functions[functionName];
@@ -140,8 +125,8 @@ export class WorkerChannel implements IWorkerChannel {
       let u = Date.now().toString(16) + Math.random().toString(16) + '0'.repeat(16);
       let guid = [u.substr(0,8), u.substr(8,4), '4000-8' + u.substr(13,3), u.substr(16,12)].join('-');
 
-      let bindingMetadata: rpc.RpcFullBindingMetadata[] = [];
-      let adapterBindingMatadata: rpc.BindingInfo[] = [];
+      let bindingMetadata: rpc.IRpcFullBindingMetadata[] = [];
+      let adapterBindingMatadata: { [k: string]: rpc.IBindingInfo } = {};
 
       let allBindings: Binding[] = [];
 
@@ -172,25 +157,25 @@ export class WorkerChannel implements IWorkerChannel {
             mydir = rpc.BindingInfo.Direction.out;
           }
 
-          let newAdaptedBinding = rpc.BindingInfo = {
+          let newAdaptedBinding: rpc.IBindingInfo = {
             type: binding.type,
             direction: mydir,
             dataType: rpc.BindingInfo.DataType.undefined
           };
   
-          let regularBinding = rpc.RpcFullBindingMetadata = {
+          let regularBinding: rpc.IRpcFullBindingMetadata = {
             raw: JSON.stringify(binding)
           };
   
-          adapterBindingMatadata.push(newAdaptedBinding);
+          adapterBindingMatadata[binding.name] = newAdaptedBinding;
           bindingMetadata.push(regularBinding);
         }
       }
 
-      let metadata: rpc.RpcFunctionMetadata = {
+      let metadata: rpc.IRpcFunctionMetadata = {
         name: functionName,
         directory: functionDir,
-        entryPoint: element.handler,
+        entryPoint: '',
         scriptFile: fileName,
         isProxy: false,
         bindings: adapterBindingMatadata
@@ -199,14 +184,14 @@ export class WorkerChannel implements IWorkerChannel {
         // directory
         // name
       };
-      this._functionLoader.load(guid, metadata);
+      this._functionLoader.load(guid, metadata, element.handler);
 
-      let hostMetadata: rpc.RpcFullFunctionMetadata = {
+      let hostMetadata: rpc.IRpcFullFunctionMetadata = {
         id: guid,
         name: functionName,
         scriptFile: fileName,
         functionDirectory: functionDir,
-        entryPoint: element.handler,
+        entryPoint: '',
         language: "node",
         bindingMetadata: bindingMetadata
       }
@@ -217,7 +202,7 @@ export class WorkerChannel implements IWorkerChannel {
     this._eventStream.write(
       {
         requestId: requestId,
-        FunctionsIndexResponse:{
+        functionsIndexResponse: {
           functionsMetadata : functionsMetadata
         } 
       }
@@ -233,7 +218,10 @@ export class WorkerChannel implements IWorkerChannel {
     if (msg.functionId && msg.metadata) {
       let err, errorMessage;
       try {
-        this._functionLoader.load(msg.functionId, msg.metadata);
+        if (!this._functionLoader.isFunctionLoaded(msg.functionId))
+        {
+          this._functionLoader.load(msg.functionId, msg.metadata, undefined);
+        }
       }
       catch(exception) {
         errorMessage = `Worker was unable to load function ${msg.metadata.name}: '${exception}'`;

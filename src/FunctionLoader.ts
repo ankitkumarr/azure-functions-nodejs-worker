@@ -5,7 +5,8 @@ import { FunctionInfo } from './FunctionInfo'
 import { InternalException } from "./utils/InternalException";
 
 export interface IFunctionLoader {
-  load(functionId: string, metadata: rpc.IRpcFunctionMetadata): void;
+  load(functionId: string, metadata: rpc.IRpcFunctionMetadata, actualFunction?: Function): void;
+  isFunctionLoaded(functionId: string): boolean;
   getInfo(functionId: string): FunctionInfo;
   getFunc(functionId: string): Function;
 }
@@ -16,14 +17,23 @@ export class FunctionLoader implements IFunctionLoader {
         func: Function
     }} = {};
 
-    load(functionId: string, metadata: rpc.IRpcFunctionMetadata): void {
+    load(functionId: string, metadata: rpc.IRpcFunctionMetadata, actualFunction?: Function): void {
       if (metadata.isProxy === true) {
           return;
       }
       let scriptFilePath = <string>(metadata && metadata.scriptFile);
       let script = require(scriptFilePath);
-      let entryPoint = <string>(metadata && metadata.entryPoint);
-      let userFunction = getEntryPoint(script, entryPoint);
+      let entryPoint = <any>(metadata && metadata.entryPoint);
+
+      let userFunction: Function;
+
+      if (actualFunction && isFunction(actualFunction)) {
+        userFunction = actualFunction;
+      }
+      else {
+        userFunction = getEntryPoint(script, entryPoint);
+      }
+
       if(!isFunction(userFunction)) {
         throw new InternalException("The resolved entry point is not a function and cannot be invoked by the functions runtime. Make sure the function has been correctly exported.");
       }
@@ -56,7 +66,12 @@ export class FunctionLoader implements IFunctionLoader {
     }
 }
 
-function getEntryPoint(f: any, entryPoint?: string): Function {
+function getEntryPoint(f: any, entryPoint?: any): Function {
+    if (entryPoint && !(entryPoint instanceof String))
+    {
+        return entryPoint
+    }
+
     if (isObject(f)) {
         var obj = f;
         let keys = Object.keys(f);
