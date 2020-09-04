@@ -108,105 +108,120 @@ export class WorkerChannel implements IWorkerChannel {
   }
 
   public functionsIndexRequest(requestId: string, msg: rpc.FunctionsIndexRequest) {
-    let functionDir = msg.functionsDirectory
-
-    // TODO: Load the exported "app" property dynamically from "functionDir/app.js" or "functionDir/dist/app.js"
-    // Then similar to what we did in python, construct the actual metadata and the adapter to send to 
-    // `this._functionLoader.load`
-    let fileName = functionDir + "\\dist\\app.js";
-    let script = require(functionDir + "\\dist\\app.js");
-
-    let functions: FunctionDeclaration = script["functions"];
     let functionsMetadata: rpc.IRpcFullFunctionMetadata[] = [];
 
-    for (let functionName in functions) {
-      let element = functions[functionName];
+    try {
+      let functionDir = msg.functionsDirectory
 
-      let u = Date.now().toString(16) + Math.random().toString(16) + '0'.repeat(16);
-      let guid = [u.substr(0,8), u.substr(8,4), '4000-8' + u.substr(13,3), u.substr(16,12)].join('-');
+      // TODO: Load the exported "app" property dynamically from "functionDir/app.js" or "functionDir/dist/app.js"
+      // Then similar to what we did in python, construct the actual metadata and the adapter to send to 
+      // `this._functionLoader.load`
+      let fileName = functionDir + "\\dist\\app.js";
+      let script = require(functionDir + "\\dist\\app.js");
 
-      let bindingMetadata: rpc.IRpcFullBindingMetadata[] = [];
-      let adapterBindingMatadata: { [k: string]: rpc.IBindingInfo } = {};
+      let functions: FunctionDeclaration = script["functions"];
 
-      let allBindings: Binding[] = [];
+      for (let functionName in functions) {
+        let element = functions[functionName];
 
-      if (element.outputBindings)
-      {
-        let outputBindings: Binding[] = element.outputBindings;
-        allBindings = allBindings.concat(outputBindings);
-      }
+        let u = Date.now().toString(16) + Math.random().toString(16) + '0'.repeat(16);
+        let guid = [u.substr(0,8), u.substr(8,4), '4000-8' + u.substr(13,3), u.substr(16,12)].join('-');
 
-      if (element.inputBindings)
-      {
-        let inputBindings: Binding[] = element.inputBindings;
-        allBindings = allBindings.concat(inputBindings);
-      }
+        let bindingMetadata: rpc.IRpcFullBindingMetadata[] = [];
+        let adapterBindingMatadata: { [k: string]: rpc.IBindingInfo } = {};
 
-      if (element.trigger)
-      {
-        allBindings.push(element.trigger);
-      }
+        let allBindings: Binding[] = [];
 
-      if (allBindings)
-      {
-        for (let binding of allBindings)
+        if (element.outputBindings)
         {
-          let mydir = rpc.BindingInfo.Direction.in;
-          if (binding.direction.toLowerCase() == "out")
-          {
-            mydir = rpc.BindingInfo.Direction.out;
-          }
-
-          let newAdaptedBinding: rpc.IBindingInfo = {
-            type: binding.type,
-            direction: mydir,
-            dataType: rpc.BindingInfo.DataType.undefined
-          };
-  
-          let regularBinding: rpc.IRpcFullBindingMetadata = {
-            raw: JSON.stringify(binding)
-          };
-  
-          adapterBindingMatadata[binding.name] = newAdaptedBinding;
-          bindingMetadata.push(regularBinding);
+          let outputBindings: Binding[] = element.outputBindings;
+          allBindings = allBindings.concat(outputBindings);
         }
+
+        if (element.inputBindings)
+        {
+          let inputBindings: Binding[] = element.inputBindings;
+          allBindings = allBindings.concat(inputBindings);
+        }
+
+        if (element.trigger)
+        {
+          allBindings.push(element.trigger);
+        }
+
+        if (allBindings)
+        {
+          for (let binding of allBindings)
+          {
+            let mydir = rpc.BindingInfo.Direction.in;
+            if (binding.direction.toLowerCase() == "out")
+            {
+              mydir = rpc.BindingInfo.Direction.out;
+            }
+
+            let newAdaptedBinding: rpc.IBindingInfo = {
+              type: binding.type,
+              direction: mydir,
+              dataType: rpc.BindingInfo.DataType.undefined
+            };
+
+            let regularBinding: rpc.IRpcFullBindingMetadata = {
+              raw: JSON.stringify(binding)
+            };
+
+            adapterBindingMatadata[binding.name] = newAdaptedBinding;
+            bindingMetadata.push(regularBinding);
+          }
+        }
+
+        let metadata: rpc.IRpcFunctionMetadata = {
+          name: functionName,
+          directory: functionDir,
+          entryPoint: '',
+          scriptFile: fileName,
+          isProxy: false,
+          bindings: adapterBindingMatadata
+          // all the rest of the stuff that needs to be in the metadata
+          // bindings
+          // directory
+          // name
+        };
+        this._functionLoader.load(guid, metadata, element.handler);
+
+        let hostMetadata: rpc.IRpcFullFunctionMetadata = {
+          id: guid,
+          name: functionName,
+          scriptFile: fileName,
+          functionDirectory: functionDir,
+          entryPoint: '',
+          language: "node",
+          bindingMetadata: bindingMetadata
+        }
+
+        functionsMetadata.push(hostMetadata)
       }
 
-      let metadata: rpc.IRpcFunctionMetadata = {
-        name: functionName,
-        directory: functionDir,
-        entryPoint: '',
-        scriptFile: fileName,
-        isProxy: false,
-        bindings: adapterBindingMatadata
-        // all the rest of the stuff that needs to be in the metadata
-        // bindings
-        // directory
-        // name
-      };
-      this._functionLoader.load(guid, metadata, element.handler);
-
-      let hostMetadata: rpc.IRpcFullFunctionMetadata = {
-        id: guid,
-        name: functionName,
-        scriptFile: fileName,
-        functionDirectory: functionDir,
-        entryPoint: '',
-        language: "node",
-        bindingMetadata: bindingMetadata
-      }
-
-      functionsMetadata.push(hostMetadata)
+      this._eventStream.write(
+        {
+          requestId: requestId,
+          functionsIndexResponse: {
+            functionsMetadata : functionsMetadata
+          }
+        }
+      )
     }
-
-    this._eventStream.write(
-      {
-        requestId: requestId,
-        functionsIndexResponse: {
-          functionsMetadata : functionsMetadata
-        } 
-      }
-    )
+    // TODO: For easiest backward compat for now, we return an empty array for host to do the
+    // indexing. We will likely change this going forward. At the least we will log the error
+    catch (e) {
+      this._eventStream.write(
+        {
+          requestId: requestId,
+          functionsIndexResponse: {
+            functionsMetadata : functionsMetadata
+          }
+        }
+      )
+    }
   }
 
   /**
