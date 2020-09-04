@@ -10,6 +10,7 @@ import { InternalException } from './utils/InternalException';
 import LogCategory = rpc.RpcLog.RpcLogCategory;
 import LogLevel = rpc.RpcLog.Level;
 import { FunctionDeclaration } from "create-function-app"
+import { Binding } from "create-function-app/src/types"
 
 
 /**
@@ -112,8 +113,8 @@ export class WorkerChannel implements IWorkerChannel {
     // TODO: Load the exported "app" property dynamically from "functionDir/app.js" or "functionDir/dist/app.js"
     // Then similar to what we did in python, construct the actual metadata and the adapter to send to 
     // `this._functionLoader.load`
-    let fileName = functionDir + "\\app.js";
-    let script = require(functionDir + "\\app.js");
+    let fileName = functionDir + "\\dist\\app.js";
+    let script = require(functionDir + "\\dist\\app.js");
 
   //   {
   //     helloWorld: {
@@ -130,16 +131,69 @@ export class WorkerChannel implements IWorkerChannel {
   //     }
   // }
 
-    let functions: FunctionDeclaration[] = script["functions"];
-    let functionsMetadata = [];
+    let functions: FunctionDeclaration = script["functions"];
+    let functionsMetadata: rpc.RpcFullFunctionMetadata[] = [];
 
-    functions.forEach(element => {
+    for (let functionName in functions) {
+      let element = functions[functionName];
+
       let u = Date.now().toString(16) + Math.random().toString(16) + '0'.repeat(16);
       let guid = [u.substr(0,8), u.substr(8,4), '4000-8' + u.substr(13,3), u.substr(16,12)].join('-');
+
+      let bindingMetadata: rpc.RpcFullBindingMetadata[] = [];
+      let adapterBindingMatadata: rpc.BindingInfo[] = [];
+
+      let allBindings: Binding[] = [];
+
+      if (element.outputBindings)
+      {
+        let outputBindings: Binding[] = element.outputBindings;
+        allBindings = allBindings.concat(outputBindings);
+      }
+
+      if (element.inputBindings)
+      {
+        let inputBindings: Binding[] = element.inputBindings;
+        allBindings = allBindings.concat(inputBindings);
+      }
+
+      if (element.trigger)
+      {
+        allBindings.push(element.trigger);
+      }
+
+      if (allBindings)
+      {
+        for (let binding of allBindings)
+        {
+          let mydir = rpc.BindingInfo.Direction.in;
+          if (binding.direction.toLowerCase() == "out")
+          {
+            mydir = rpc.BindingInfo.Direction.out;
+          }
+
+          let newAdaptedBinding = rpc.BindingInfo = {
+            type: binding.type,
+            direction: mydir,
+            dataType: rpc.BindingInfo.DataType.undefined
+          };
+  
+          let regularBinding = rpc.RpcFullBindingMetadata = {
+            raw: JSON.stringify(binding)
+          };
+  
+          adapterBindingMatadata.push(newAdaptedBinding);
+          bindingMetadata.push(regularBinding);
+        }
+      }
+
       let metadata: rpc.RpcFunctionMetadata = {
-        entryPoint : element.handler,
-        scriptFile : fileName,
-        isProxy : false,
+        name: functionName,
+        directory: functionDir,
+        entryPoint: element.handler,
+        scriptFile: fileName,
+        isProxy: false,
+        bindings: adapterBindingMatadata
         // all the rest of the stuff that needs to be in the metadata
         // bindings
         // directory
@@ -147,23 +201,24 @@ export class WorkerChannel implements IWorkerChannel {
       };
       this._functionLoader.load(guid, metadata);
 
-      functionsMetadata.push()
-    });
-/*
-    string id = 11;
-    string name = 1;
-    string script_file = 2;
-    string function_directory = 3;
-    string entry_point = 4;
-    string language = 5;
-    repeated RpcFullBindingMetadata binding_metadata = 6;
-    */
+      let hostMetadata: rpc.RpcFullFunctionMetadata = {
+        id: guid,
+        name: functionName,
+        scriptFile: fileName,
+        functionDirectory: functionDir,
+        entryPoint: element.handler,
+        language: "node",
+        bindingMetadata: bindingMetadata
+      }
+
+      functionsMetadata.push(hostMetadata)
+    }
 
     this._eventStream.write(
       {
         requestId: requestId,
         FunctionsIndexResponse:{
-          functions_metadata : functionsMetadata
+          functionsMetadata : functionsMetadata
         } 
       }
     )
